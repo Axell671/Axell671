@@ -1,16 +1,90 @@
-## Hi there 👋
+# Tap To Translate — веб-версия
 
-<!--
-**Axell671/Axell671** is a ✨ _special_ ✨ repository because its `README.md` (this file) appears on your GitHub profile.
+Бесплатный онлайн-переводчик на чистой статике (HTML/CSS/JS). Без бэкенда, без API-ключей. Работает на GitHub Pages.
 
-Here are some ideas to get you started:
+## Возможности (по ТЗ 2.0)
 
-- 🔭 I’m currently working on ...
-- 🌱 I’m currently learning ...
-- 👯 I’m looking to collaborate on ...
-- 🤔 I’m looking for help with ...
-- 💬 Ask me about ...
-- 📫 How to reach me: ...
-- 😄 Pronouns: ...
-- ⚡ Fun fact: ...
--->
+- **Мультипровайдер**: выпадающий список с группировкой "Без ключа" / "Требует API-ключ".
+  - ✅ **Google Translate** — работает без ключа (через `translate.googleapis.com`).
+  - ✅ **MyMemory Translate** — работает без ключа (до 5000 слов/день на IP; до 50000 с указанием `&de=...email...`).
+  - 🔒 **Яндекс, Microsoft, DeepL, Baidu, Gemini AI, ChatGPT** — переключатели присутствуют в UI (как в оригинальном Android-приложении "Tap To Translate Screen"), но требуют API-ключ. При выборе показывается тултип "требует API-ключ" и стрелка возвращается на Google.
+- **2 текстовых поля** с автопереводом (debounce 1 сек).
+- **Определение языка** (исходный — «Определить автоматически»).
+- **Реверс** — поменять направление перевода одной кнопкой.
+- **Копирование** в один клик с всплывающим tooltip'ом.
+- **Очистка** исходного поля.
+- **Адаптивно**: на ПК — параллельные поля, на мобильных — друг под другом.
+- **Dark mode** UI как в оригинальном Android-приложении.
+- **In-memory cache** (вместо Redis): одинаковые запросы в течение сессии не дублируются.
+
+## OCR (распознавание текста со скриншота)
+
+Внизу интерфейса — кнопка **📷 OCR** (сразу видна на смартфоне, sticky к низу). После выбора файла:
+1. Картинка масштабируется в data-URL.
+2. Инициализируется Tesseract.js (`https://cdn.jsdelivr.net/npm/tesseract.js@5`) + WASM-ядро + traineddata для выбранных языков (с `tessdata.projectnaptha.com`, CORS `*`). Всё client-side, без ключей.
+3. Распознанный текст **автоматически подставляется** в исходное поле, аппендится к уже введённому.
+4. Триггерится `input` event → app.js ловит → debounce 1с → автоперевод появляется в правом поле.
+
+**Пресеты языков OCR** (выпадающий селект рядом с кнопкой):
+- Рус + Eng (по умолчанию) — обрабатывает оба языка смешанно (типично для скриншота чата)
+- Только русский / Только English
+- Рус + Eng + Укр
+- Азиатские + EN (`kor+chi_sim+chi_tra+tha+jpn`)
+- Европейские + RU (`spa+fra+deu`)
+
+**Важно о размере:** первый запуск OCR тянет ~2 МБ traineddata на каждый язык (2 языка = 4 МБ). Это нормально —Mozilla-браузер кеширует, второй запуск той же комбинации мгновенный.
+
+## Почему без бэкенда
+
+ТЗ просит прокси-сервер для защиты API-ключей + Redis-кеш. Это для платных провайдеров, где ключи реально есть. Но GitHub Pages — статический хостинг, и ключ endeavour'а в бесплатные endpoint'ы **не нужен** (ключей просто нет):
+
+| Провайдер | Endpoint | Ключ | CORS |
+|-----------|----------|------|------|
+| Google | `translate.googleapis.com/translate_a/single?client=gtx` | не нужен | `Access-Control-Allow-Origin: *` ✅ |
+| MyMemory | `api.mymemory.translated.net/get` | не нужен (5000 слов/день) | `Access-Control-Allow-Origin: *` ✅ |
+| Яндекс | `browser.translate.yandex.net` | нужен (старый v1 вернёт 410 Gone) | — |
+| Lingva | `lingva.ml/api/v1/…` | не нужен, но инстансы под Cloudflare-проверкой | блокировкабота |
+| LibreTranslate | `libretranslate.com` | с 2024 нужен бесплатный API-ключ | — |
+| DeepL | `www2.deepl.com/jsonrpc` | нужен (или региональный блок) | — |
+| Microsoft | `api.cognitive.microsofttranslator.com` | нужен | — |
+| Baidu | `fanyi-api.baidu.com` | нужен | — |
+
+Кеш заменён на браузерный in-memory (одна сессия) — для пользовательского UX эффект тот же, что у Redis.
+
+## Файлы
+
+| Файл | Назначение |
+|------|-----------|
+| `index.html` | разметка (4 блока: заголовок, панель управления, текстовая зона, OCR-панель) |
+| `style.css` | dark theme + адаптив (ПК: параллельные поля, моб: стек) |
+| `languages.js` | 69 языков (auto + человекочитаемые названия), заполняет `<select>` |
+| `app.js` | логика перевода: debounce, fetch Google/MyMemory, copy, reverse, switch, cache |
+| `ocr.js` | OCR через Tesseract.js: ловит файл, распознаёт, подставляет в исходное поле, триггерит автоперевод |
+| `README.md` | этот файл |
+
+## Запуск локально
+
+```bash
+# любой статический сервер
+python -m http.server 8099
+# или
+npx serve
+```
+
+Затем открыть `http://localhost:8099/`.
+
+## Деплой на GitHub Pages
+
+1. Залить все 4 файла (`index.html`, `style.css`, `languages.js`, `app.js`) в репозиторий в корень или в подпапку.
+2. Settings → Pages → Source: ветка `main`/`root` (или `gh-pages`).
+3. Готово, через минуту сайт будет по адресу `https://<user>.github.io/<repo>/`.
+
+## Горячие клавиши
+
+- `Ctrl/Cmd + Enter` в исходном поле — мгновенный перевод (минуя debounce 1с).
+- Кнопка «Копировать перевод» доступна с клавиатуры (`Enter` / `Space`).
+
+## Увеличение лимита MyMemory (опционально)
+
+Если подруга хочет подольше пользоваться MyMemory без ключа — можно указать email:
+в `app.js`, в URL MyMemory, добавить `&de=hello@example.com` (где email — валидный). Лимит вырастает с 5000 до 50000 слов в день на этот Email. В текущем коде это не включено для приватности.
